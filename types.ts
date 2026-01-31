@@ -40,6 +40,7 @@ export interface Case {
   opposingParty: string;
   status: 'OPEN' | 'ARCHIVED' | 'SUSPENDED';
   responsibleLawyerId: string;
+  observations?: string; // Novo campo para observações
 }
 
 export interface Contact {

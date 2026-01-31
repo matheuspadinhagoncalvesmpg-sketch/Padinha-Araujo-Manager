@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context';
-import { Role, ViewState } from './types';
+import { Role, ViewState, Case } from './types';
 import { Calendar } from './components/Calendar';
 import { 
   LayoutDashboard, 
@@ -13,7 +13,8 @@ import {
   Scale,
   Plus,
   Loader2,
-  HelpCircle
+  HelpCircle,
+  Pencil
 } from 'lucide-react';
 
 // --- Componente de Logo da Marca (Monograma PA) ---
@@ -202,15 +203,52 @@ const DashboardStats: React.FC = () => {
 };
 
 const CaseList: React.FC = () => {
-    const { cases, addCase, canEdit, currentUser } = useApp();
+    const { cases, addCase, updateCase, canEdit, currentUser } = useApp();
     const [isModalOpen, setModalOpen] = useState(false);
-    const [newCase, setNewCase] = useState({ title: '', number: '', clientName: '', opposingParty: '' });
+    // Armazena o ID do processo em edição. Se null, é criação.
+    const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
 
-    const handleAdd = (e: React.FormEvent) => {
+    const [formData, setFormData] = useState({ 
+        title: '', 
+        number: '', 
+        clientName: '', 
+        opposingParty: '', 
+        status: 'OPEN' as 'OPEN' | 'ARCHIVED' | 'SUSPENDED',
+        observations: '' 
+    });
+
+    const openCreateModal = () => {
+        setEditingCaseId(null);
+        setFormData({ title: '', number: '', clientName: '', opposingParty: '', status: 'OPEN', observations: '' });
+        setModalOpen(true);
+    };
+
+    const openEditModal = (c: Case) => {
+        setEditingCaseId(c.id);
+        setFormData({
+            title: c.title,
+            number: c.number,
+            clientName: c.clientName,
+            opposingParty: c.opposingParty,
+            status: c.status,
+            observations: c.observations || ''
+        });
+        setModalOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        addCase({ ...newCase, status: 'OPEN', responsibleLawyerId: currentUser?.id || '1' } as any);
+        if (editingCaseId) {
+            // Edit Mode
+            await updateCase(editingCaseId, formData);
+        } else {
+            // Create Mode
+            await addCase({ 
+                ...formData, 
+                responsibleLawyerId: currentUser?.id || '1' 
+            });
+        }
         setModalOpen(false);
-        setNewCase({ title: '', number: '', clientName: '', opposingParty: '' });
     };
 
     return (
@@ -218,7 +256,7 @@ const CaseList: React.FC = () => {
              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                 <h2 className="text-xl font-serif font-bold text-brand-navy">Processos</h2>
                 {canEdit && (
-                    <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded hover:bg-opacity-90 transition shadow-sm">
+                    <button onClick={openCreateModal} className="flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded hover:bg-opacity-90 transition shadow-sm">
                         <Plus size={18} /> Novo Processo
                     </button>
                 )}
@@ -229,21 +267,37 @@ const CaseList: React.FC = () => {
                         <th className="px-6 py-4 text-left font-medium">Número</th>
                         <th className="px-6 py-4 text-left font-medium">Título</th>
                         <th className="px-6 py-4 text-left font-medium">Cliente</th>
-                        <th className="px-6 py-4 text-left font-medium">Parte Contrária</th>
                         <th className="px-6 py-4 text-left font-medium">Status</th>
+                        <th className="px-6 py-4 text-right font-medium">Ações</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                     {cases.map(c => (
-                        <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={c.id} className="hover:bg-gray-50 transition-colors group">
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{c.number}</td>
-                            <td className="px-6 py-4 font-medium text-gray-800">{c.title}</td>
+                            <td className="px-6 py-4 font-medium text-gray-800">
+                                {c.title}
+                                {c.observations && <div className="text-xs text-gray-400 mt-1 truncate max-w-[200px]">Obs: {c.observations}</div>}
+                            </td>
                             <td className="px-6 py-4 text-sm text-gray-600">{c.clientName}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">{c.opposingParty}</td>
                             <td className="px-6 py-4">
-                                <span className={`px-2 py-1 rounded text-xs font-semibold ${c.status === 'OPEN' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                    {c.status === 'OPEN' ? 'Ativo' : c.status}
+                                <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                    c.status === 'OPEN' ? 'bg-green-100 text-green-800' : 
+                                    c.status === 'ARCHIVED' ? 'bg-gray-100 text-gray-600' : 'bg-red-100 text-red-800'
+                                }`}>
+                                    {c.status === 'OPEN' ? 'Ativo' : c.status === 'ARCHIVED' ? 'Arquivado' : 'Suspenso'}
                                 </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                                {(canEdit || currentUser?.role === Role.LAWYER) && (
+                                    <button 
+                                        onClick={() => openEditModal(c)}
+                                        className="text-gray-400 hover:text-brand-navy p-1 rounded hover:bg-gray-100 transition"
+                                        title="Editar Processo"
+                                    >
+                                        <Pencil size={16} />
+                                    </button>
+                                )}
                             </td>
                         </tr>
                     ))}
@@ -257,29 +311,54 @@ const CaseList: React.FC = () => {
 
             {isModalOpen && (
                  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <form onSubmit={handleAdd} className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-                        <h3 className="text-xl font-serif font-bold mb-6 text-brand-navy">Novo Processo</h3>
+                    <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-serif font-bold mb-6 text-brand-navy">
+                            {editingCaseId ? 'Editar Processo' : 'Novo Processo'}
+                        </h3>
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Número</label>
-                                <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={newCase.number} onChange={e => setNewCase({...newCase, number: e.target.value})} />
+                                <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} />
                             </div>
                             <div>
                                 <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Título / Causa</label>
-                                <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={newCase.title} onChange={e => setNewCase({...newCase, title: e.target.value})} />
+                                <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                             </div>
-                            <div>
-                                <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Cliente</label>
-                                <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={newCase.clientName} onChange={e => setNewCase({...newCase, clientName: e.target.value})} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Cliente</label>
+                                    <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Parte Contrária</label>
+                                    <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={formData.opposingParty} onChange={e => setFormData({...formData, opposingParty: e.target.value})} />
+                                </div>
                             </div>
+                            
                             <div>
-                                <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Parte Contrária</label>
-                                <input required className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition" value={newCase.opposingParty} onChange={e => setNewCase({...newCase, opposingParty: e.target.value})} />
+                                <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Status</label>
+                                <select className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy outline-none" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
+                                    <option value="OPEN">Ativo (Open)</option>
+                                    <option value="SUSPENDED">Suspenso</option>
+                                    <option value="ARCHIVED">Arquivado</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs uppercase text-gray-500 font-semibold mb-1">Observações / Andamento</label>
+                                <textarea 
+                                    className="w-full p-2 border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy outline-none transition h-24 resize-none" 
+                                    placeholder="Detalhes adicionais ou andamento recente..."
+                                    value={formData.observations}
+                                    onChange={e => setFormData({...formData, observations: e.target.value})}
+                                />
                             </div>
                         </div>
                         <div className="mt-8 flex justify-end gap-3">
                             <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition">Cancelar</button>
-                            <button type="submit" className="px-4 py-2 bg-brand-navy text-white rounded hover:bg-opacity-90 transition">Salvar Processo</button>
+                            <button type="submit" className="px-4 py-2 bg-brand-navy text-white rounded hover:bg-opacity-90 transition">
+                                {editingCaseId ? 'Salvar Alterações' : 'Criar Processo'}
+                            </button>
                         </div>
                     </form>
                  </div>

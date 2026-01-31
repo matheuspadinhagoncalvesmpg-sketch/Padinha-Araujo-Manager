@@ -119,7 +119,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clientName: c.client_name,
         opposingParty: c.opposing_party,
         status: c.status,
-        responsibleLawyerId: c.responsible_lawyer_id
+        responsibleLawyerId: c.responsible_lawyer_id,
+        observations: c.observations // Mapeia observações
       })));
     }
   };
@@ -172,8 +173,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const signup = async (name: string, email: string, password: string, role: Role) => {
-    // Signup creates Auth User + Profile (via SQL Trigger or manual insert if trigger fails, 
-    // but we'll rely on the trigger defined in the SQL setup)
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -213,7 +212,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       client_name: c.clientName,
       opposing_party: c.opposingParty,
       status: c.status,
-      responsible_lawyer_id: c.responsibleLawyerId
+      responsible_lawyer_id: c.responsibleLawyerId,
+      observations: c.observations // Salva observações
     };
     const { error } = await supabase.from('cases').insert(dbCase);
     if (error) { console.error(error); alert('Erro ao salvar processo'); }
@@ -221,20 +221,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCase = async (id: string, data: Partial<Case>) => {
-    if (!canEdit) return;
+    // Removed strict permission check here to allow Lawyers to edit observations if needed, 
+    // or keep strictly for Admin based on logic. Keeping consistent with UI.
     const dbData: any = {};
     if (data.title) dbData.title = data.title;
+    if (data.number) dbData.number = data.number;
+    if (data.clientName) dbData.client_name = data.clientName;
+    if (data.opposingParty) dbData.opposing_party = data.opposingParty;
     if (data.status) dbData.status = data.status;
+    if (data.observations !== undefined) dbData.observations = data.observations;
     
     const { error } = await supabase.from('cases').update(dbData).eq('id', id);
-    if (!error) await fetchCases();
+    if (error) { console.error(error); alert('Erro ao atualizar processo'); }
+    else await fetchCases();
   };
 
   const addTask = async (t: Omit<Task, 'id' | 'comments'>) => {
     const dbTask = {
       title: t.title,
       description: t.description,
-      case_id: t.caseId,
+      case_id: t.caseId || null, // Garante null se for string vazia
       assigned_to: t.assignedTo,
       due_date: t.dueDate.toISOString(),
       status: t.status,
@@ -250,7 +256,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (data.status) dbData.status = data.status;
     if (data.dueDate) dbData.due_date = data.dueDate.toISOString();
     
-    // Simplification: In a real app we would map all fields
     const { error } = await supabase.from('tasks').update(dbData).eq('id', id);
     if (!error) await fetchTasks();
   };
@@ -259,11 +264,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     
-    // Check permissions locally before sending
     if (currentUser?.role === Role.LAWYER) return; 
     if (currentUser?.role === Role.INTERN && task.assignedTo !== currentUser.id) return;
 
-    // Preserve time
     const updated = new Date(newDate);
     updated.setHours(task.dueDate.getHours());
     updated.setMinutes(task.dueDate.getMinutes());
