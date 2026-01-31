@@ -43,6 +43,15 @@ export interface Case {
   observations?: string; // Novo campo para observações
 }
 
+export interface CaseDocument {
+  id: string;
+  caseId: string;
+  name: string;
+  url: string;
+  fileType: string;
+  createdAt: Date;
+}
+
 export interface Contact {
   id: string;
   name: string;
@@ -52,4 +61,4 @@ export interface Contact {
   notes?: string;
 }
 
-export type ViewState = 'DASHBOARD' | 'AGENDA' | 'CASES' | 'CONTACTS' | 'USERS';
+export type ViewState = 'DASHBOARD' | 'AGENDA' | 'CASES' | 'CASE_DETAIL' | 'CONTACTS' | 'USERS';

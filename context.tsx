@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Role, Task, Case, Contact, Comment } from './types';
+import { User, Role, Task, Case, Contact, Comment, CaseDocument } from './types';
 import { supabase } from './supabaseClient';
 
 interface AppContextType {
@@ -19,6 +19,11 @@ interface AppContextType {
   addComment: (taskId: string, content: string) => Promise<void>;
   moveTaskToDate: (taskId: string, newDate: Date) => Promise<void>;
   addContact: (c: Omit<Contact, 'id'>) => Promise<void>;
+  
+  // GED
+  fetchCaseDocuments: (caseId: string) => Promise<CaseDocument[]>;
+  addCaseDocument: (doc: Omit<CaseDocument, 'id' | 'createdAt'>) => Promise<void>;
+  uploadFile: (file: File, caseId: string) => Promise<string>;
   
   // Permission Helpers
   canEdit: boolean; 
@@ -221,8 +226,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCase = async (id: string, data: Partial<Case>) => {
-    // Removed strict permission check here to allow Lawyers to edit observations if needed, 
-    // or keep strictly for Admin based on logic. Keeping consistent with UI.
     const dbData: any = {};
     if (data.title) dbData.title = data.title;
     if (data.number) dbData.number = data.number;
@@ -291,6 +294,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     else await fetchContacts();
   };
 
+  // --- GED Actions ---
+  const fetchCaseDocuments = async (caseId: string): Promise<CaseDocument[]> => {
+    const { data, error } = await supabase
+      .from('case_documents')
+      .select('*')
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map(d => ({
+      id: d.id,
+      caseId: d.case_id,
+      name: d.name,
+      url: d.url,
+      fileType: d.file_type,
+      createdAt: new Date(d.created_at)
+    }));
+  };
+
+  const uploadFile = async (file: File, caseId: string): Promise<string> => {
+    // Gera um nome único: caseId/timestamp_nomedoarquivo
+    const cleanFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const filePath = `${caseId}/${Date.now()}_${cleanFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('case-documents')
+        .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('case-documents').getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+
+  const addCaseDocument = async (doc: Omit<CaseDocument, 'id' | 'createdAt'>) => {
+      const { error } = await supabase.from('case_documents').insert({
+          case_id: doc.caseId,
+          name: doc.name,
+          url: doc.url,
+          file_type: doc.fileType,
+          uploaded_by: currentUser?.id
+      });
+      if (error) {
+          console.error("Erro ao salvar metadados do documento:", error);
+          throw error;
+      }
+  };
+
   return (
     <AppContext.Provider value={{
       currentUser, loading, users, cases, tasks, contacts,
@@ -298,6 +350,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addCase, updateCase,
       addTask, updateTask, addComment, moveTaskToDate,
       addContact,
+      fetchCaseDocuments, addCaseDocument, uploadFile,
       canEdit, getVisibleTasks
     }}>
       {children}

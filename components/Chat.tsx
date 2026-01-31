@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context';
 import { Task } from '../types';
 import { Send, User as UserIcon } from 'lucide-react';
@@ -10,6 +10,15 @@ interface ChatProps {
 export const Chat: React.FC<ChatProps> = ({ task }) => {
   const { addComment, currentUser } = useApp();
   const [message, setMessage] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [task.comments]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +55,7 @@ export const Chat: React.FC<ChatProps> = ({ task }) => {
             );
           })
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       <form onSubmit={handleSubmit} className="p-3 bg-white border-t flex gap-2">
